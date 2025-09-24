@@ -107,36 +107,32 @@ class ClientIp implements MiddlewareInterface
 
     private static function isInCIDR(string $ip, string $cidr): bool
     {
-        if (false === str_contains($cidr, '/')) {
+        $tokens = explode('/', $cidr);
+        if (count($tokens) !== 2) {
             return false;
         }
 
-        [$address, $netmask] = explode('/', $cidr, 2);
-
-        if ('0' === $netmask) {
-            return false !== filter_var($address, \FILTER_VALIDATE_IP, \FILTER_FLAG_IPV4);
-        }
-
-        if ($netmask < 0 || $netmask > 32 || false === is_numeric($netmask)) {
+        if (!self::isValid($ip) && !self::isValid($tokens[0])) {
             return false;
         }
 
-        if (false === ip2long($address)) {
+        if (!is_numeric($tokens[1]) || $tokens[1] < 0 || $tokens[1] > 32) {
             return false;
         }
 
-        return 0 === substr_compare(
-            sprintf(
-                '%032b',
-                ip2long($ip)
-            ),
-            sprintf(
-                '%032b',
-                ip2long($address)
-            ),
-            0,
-            (int) $netmask
-        );
+        if (false === ip2long($ip)) {
+            return false;
+        }
+
+        if (false === ip2long($tokens[0])) {
+            return false;
+        }
+
+        $ip_long   = ip2long($ip);
+        $cidr_base = ip2long($tokens[0]);
+        $mask      = (int) $tokens[1];
+
+        return 0 === substr_compare(sprintf('%032b', $ip_long), sprintf('%032b', $cidr_base), 0, $mask);
     }
 
     /**
