@@ -120,11 +120,11 @@ class ClientIp implements MiddlewareInterface
             return false;
         }
 
-        if (false === ip2long($ip)) {
+        if (!ip2long($ip)) {
             return false;
         }
 
-        if (false === ip2long($tokens[0])) {
+        if (!ip2long($tokens[0])) {
             return false;
         }
 
