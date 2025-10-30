@@ -1,0 +1,99 @@
+version: 2.1
+
+orbs:
+    kasko-ci: kasko/ci-private@6
+
+jobs:
+    test-using:
+        parameters:
+            php-version:
+                type: string
+            stability:
+                type: enum
+                enum:
+                    - stable
+                    - lowest
+        executor:
+            name: kasko-ci/php-test-executor
+            php-version: << parameters.php-version >>
+        steps:
+            - kasko-ci/php-version
+            - checkout
+            - restore_cache:
+                  keys:
+                      - v1-composer-cache-<< parameters.stability >>-{{ checksum "composer.json" }}
+                      # Fall back to using the latest cache if no exact match is found.
+                      - v1-composer-cache-<< parameters.stability >>
+            - when:
+                  condition:
+                      equal: [ "stable", << parameters.stability >> ]
+                  steps:
+                      - run:
+                            name: Validate composer files
+                            command: composer validate --strict
+                      - run:
+                            name: Lint PHP files
+                            command: |
+                                find src -name "*.php" -print0 | xargs -0 -n1 -P8 php -l
+            - run:
+                  name: Configure composer
+                  command: composer config -g github-oauth.github.com $GITHUB_COMPOSER_AUTH
+            - run:
+                  name: Install composer packages (<< parameters.stability >>)
+                  command: |
+                      composer update \
+                        --no-interaction \
+                        --no-plugins \
+                        --no-progress \
+                        --no-scripts \
+                        --optimize-autoloader \
+                        --prefer-<< parameters.stability >> \
+                        --prefer-dist \
+                        --prefer-stable
+            - save_cache:
+                  key: v1-composer-cache-<< parameters.stability >>-{{ checksum "composer.json" }}
+                  paths:
+                      - ./vendor
+            - run:
+                  name: List installed packages
+                  command: composer show
+            - run:
+                  name: Check for unused composer packages
+                  command: unused-scanner
+            - when:
+                  condition:
+                      equal: [ "stable", << parameters.stability >> ]
+                  steps:
+                      - run:
+                            name: Run PHP Code Sniffer
+                            command: ./vendor/bin/phpcs
+                      - run:
+                            name: Run PHPStan static analysis
+                            command: php -d memory_limit=-1 ./vendor/bin/phpstan analyse --no-progress
+                      - store_artifacts:
+                            path: build/
+
+    test:
+        docker:
+            - image: alpine
+        steps:
+            - run:
+                  name: Build done
+                  command: /bin/true
+
+workflows:
+    version: 2
+    tests:
+        jobs:
+            - test-using:
+                  matrix:
+                      parameters:
+                          php-version:
+                              - php83
+                          stability:
+                              - stable
+                              - lowest
+            - test:
+                  requires:
+                      - test-using-php83-stable
+                      - test-using-php83-lowest
